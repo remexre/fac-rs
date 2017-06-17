@@ -27,3 +27,6 @@ term_size = "0.3.x"
 unicode-segmentation = "1.x"
 
 [workspace]
+
+[replace]
+"derive-error-chain:0.10.1" = { git = "https://github.com/Arnavion/derive-error-chain", rev = "9ec60c0ccac9bb1fd0ee4f10d6a3fed5d79d4864" }

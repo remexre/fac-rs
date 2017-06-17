@@ -1,3 +1,5 @@
+#![feature(proc_macro)]
+
 //! A CLI tool to manage Factorio mods.
 
 #![cfg_attr(feature = "cargo-clippy", deny(clippy, clippy_pedantic))]
@@ -15,10 +17,9 @@
 extern crate appdirs;
 #[macro_use]
 extern crate clap;
+extern crate derive_error_chain;
 #[macro_use]
 extern crate error_chain;
-#[macro_use]
-extern crate derive_error_chain;
 #[macro_use]
 extern crate derive_struct;
 extern crate factorio_mods_common;
@@ -51,7 +52,7 @@ mod config;
 mod solve;
 mod util;
 
-#[derive(Debug, error_chain)]
+#[derive(Debug, derive_error_chain::error_chain)]
 pub enum ErrorKind {
 	Msg(String),
 }

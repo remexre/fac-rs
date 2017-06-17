@@ -1,7 +1,7 @@
 //! API to interface with https://mods.factorio.com/
 
 #![deny(missing_docs)]
-#![feature(conservative_impl_trait)]
+#![feature(conservative_impl_trait, proc_macro)]
 
 #![cfg_attr(feature = "cargo-clippy", deny(clippy, clippy_pedantic))]
 #![cfg_attr(feature = "cargo-clippy", allow(
@@ -15,10 +15,9 @@
 ))]
 
 extern crate backtrace;
+extern crate derive_error_chain;
 #[macro_use]
 extern crate error_chain;
-#[macro_use]
-extern crate derive_error_chain;
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
