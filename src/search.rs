@@ -1,3 +1,5 @@
+use ::futures::{ Future, Stream };
+
 pub struct SubCommand;
 
 impl ::util::SubCommand for SubCommand {
@@ -7,30 +9,35 @@ impl ::util::SubCommand for SubCommand {
 			(@arg query: index(1) "search string"))
 	}
 
-	fn run<'a>(&self, matches: &::clap::ArgMatches<'a>, _: ::Result<::factorio_mods_local::API>, web_api: ::Result<::factorio_mods_web::API>) -> ::Result<()> {
+	fn run<'a, 'b, 'c>(
+		&'a self,
+		matches: &'a ::clap::ArgMatches<'b>,
+		_: ::Result<&'c ::factorio_mods_local::API>,
+		web_api: ::Result<&'c ::factorio_mods_web::API>,
+	) -> Box<::futures::Future<Item = (), Error = ::Error> + 'c> where 'a: 'b, 'b: 'c {
 		use ::ResultExt;
 
-		let web_api = web_api?;
+		Box::new(match web_api {
+			Ok(web_api) => {
+				let query = matches.value_of("query").unwrap_or("");
 
-		let query = matches.value_of("query").unwrap_or("");
+				::futures::future::Either::A(
+					web_api.search(query, &[], None, None, None)
+					.for_each(|mod_| {
+						println!("{}", mod_.title());
+						println!("    Name: {}", mod_.name());
+						println!("    Tags: {}", ::itertools::join(mod_.tags().iter().map(|t| t.name()), ", "));
+						println!("");
+						::util::wrapping_println(mod_.summary(), "    ");
+						println!("");
 
-		let max_width = ::term_size::dimensions().map(|(w, _)| w);
+						::futures::future::ok(())
+					})
+					.or_else(|err| Err(err).chain_err(|| "Could not retrieve mods")))
+			},
 
-		let iter = web_api.search(query, &[], None, None, None);
-		for mod_ in iter {
-			let mod_ = mod_.chain_err(|| "Could not retrieve mods")?;
-			println!("{}", mod_.title());
-			println!("    Name: {}", mod_.name());
-			println!("    Tags: {}", ::itertools::join(mod_.tags().iter().map(|t| t.name()), ", "));
-			println!("");
-			max_width.map_or_else(|| {
-				println!("    {}", mod_.summary());
-			}, |max_width| {
-				::util::wrapping_println(mod_.summary(), "    ", max_width);
-			});
-			println!("");
-		}
-
-		Ok(())
+			Err(err) =>
+				::futures::future::Either::B(::futures::future::err(err))
+		})
 	}
 }

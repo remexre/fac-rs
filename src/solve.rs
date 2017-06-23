@@ -479,7 +479,7 @@ fn add_mod<E>(
 		},
 
 		Err(err) => match *err.kind() {
-			::factorio_mods_web::ErrorKind::StatusCode(_, ::factorio_mods_web::reqwest::StatusCode::NotFound) => Ok(()),
+			::factorio_mods_web::ErrorKind::StatusCode(_, ::factorio_mods_web::hyper::StatusCode::NotFound) => Ok(()),
 
 			_ => Err(err).chain_err(|| format!("Could not get mod info for {}", name)),
 		},

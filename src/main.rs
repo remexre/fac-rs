@@ -1,5 +1,7 @@
 //! A CLI tool to manage Factorio mods.
 
+#![feature(catch_expr, conservative_impl_trait)]
+
 #![cfg_attr(feature = "cargo-clippy", deny(clippy, clippy_pedantic))]
 #![cfg_attr(feature = "cargo-clippy", allow(
 	cyclomatic_complexity,
@@ -39,16 +41,18 @@ extern crate serde_json;
 extern crate term_size;
 extern crate textwrap;
 
+use ::factorio_mods_web::futures;
+
 mod enable_disable;
-mod install;
+// mod install;
 mod list;
-mod remove;
+// mod remove;
 mod search;
 mod show;
-mod update;
+// mod update;
 
 mod config;
-mod solve;
+// mod solve;
 mod util;
 
 #[derive(Debug, error_chain)]
@@ -56,26 +60,37 @@ pub enum ErrorKind {
 	Msg(String),
 }
 
+trait ErrorExt {
+	fn chain_err<F, EK>(self, error: F) -> ::Error where F: FnOnce() -> EK, EK: Into<::ErrorKind>;
+}
+
+impl<E> ErrorExt for E where E: ::std::error::Error + Send + 'static {
+	fn chain_err<F, EK>(self, callback: F) -> ::Error where F: FnOnce() -> EK, EK: Into<::ErrorKind> {
+		let state = ::error_chain::State::new::<::Error>(Box::new(self));
+		::error_chain::ChainedError::new(callback().into(), state)
+	}
+}
+
 quick_main!(|| -> Result<()> {
 	std::env::set_var("RUST_BACKTRACE", "1");
 
 	let disable_subcommand = enable_disable::DisableSubCommand;
 	let enable_subcommand = enable_disable::EnableSubCommand;
-	let install_subcommand = install::SubCommand;
+	// let install_subcommand = install::SubCommand;
 	let list_subcommand = list::SubCommand;
-	let remove_subcommand = remove::SubCommand;
+	// let remove_subcommand = remove::SubCommand;
 	let search_subcommand = search::SubCommand;
 	let show_subcommand = show::SubCommand;
-	let update_subcommand = update::SubCommand;
+	// let update_subcommand = update::SubCommand;
 	let mut subcommands = std::collections::HashMap::<_, &util::SubCommand>::new();
 	subcommands.insert("disable", &disable_subcommand);
 	subcommands.insert("enable", &enable_subcommand);
-	subcommands.insert("install", &install_subcommand);
+	// subcommands.insert("install", &install_subcommand);
 	subcommands.insert("list", &list_subcommand);
-	subcommands.insert("remove", &remove_subcommand);
+	// subcommands.insert("remove", &remove_subcommand);
 	subcommands.insert("search", &search_subcommand);
 	subcommands.insert("show", &show_subcommand);
-	subcommands.insert("update", &update_subcommand);
+	// subcommands.insert("update", &update_subcommand);
 	let subcommands = subcommands;
 
 	let app = clap_app!(@app (app_from_crate!())
@@ -93,8 +108,15 @@ quick_main!(|| -> Result<()> {
 	let (subcommand_name, subcommand_matches) = matches.subcommand();
 	let subcommand = subcommands[subcommand_name];
 
-	subcommand.run(
+	let mut core = ::factorio_mods_web::tokio_core::reactor::Core::new().unwrap();
+
+	let local_api = factorio_mods_local::API::new().chain_err(|| "Could not initialize local API");
+	let web_api = factorio_mods_web::API::new(None, core.handle()).chain_err(|| "Could not initialize web API");
+
+	let result = subcommand.run(
 		subcommand_matches.unwrap(),
-		factorio_mods_local::API::new().chain_err(|| "Could not initialize local API"),
-		factorio_mods_web::API::new(None).chain_err(|| "Could not initialize local API"))
+		match local_api { Ok(ref local_api) => Ok(local_api), Err(err) => Err(err), },
+		match web_api { Ok(ref web_api) => Ok(web_api), Err(err) => Err(err), });
+
+	core.run(result)
 });

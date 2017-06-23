@@ -1,3 +1,5 @@
+use ::futures::IntoFuture;
+
 pub struct SubCommand;
 
 impl ::util::SubCommand for SubCommand {
@@ -6,13 +8,21 @@ impl ::util::SubCommand for SubCommand {
 			(about: "Update installed mods."))
 	}
 
-	fn run<'a>(&self, _: &::clap::ArgMatches<'a>, local_api: ::Result<::factorio_mods_local::API>, web_api: ::Result<::factorio_mods_web::API>) -> ::Result<()> {
-		let local_api = local_api?;
-		let web_api = web_api?;
+	fn run<'a, 'b, 'c>(
+		&'a self,
+		matches: &'a ::clap::ArgMatches<'b>,
+		local_api: ::Result<&'c ::factorio_mods_local::API>,
+		web_api: ::Result<&'c ::factorio_mods_web::API>,
+	) -> Box<::futures::Future<Item = (), Error = ::Error> + 'c> where 'a: 'b, 'b: 'c {
+		Box::new((do catch {
+			let local_api = local_api?;
+			let web_api = web_api?;
 
-		let config = ::config::Config::load(&local_api)?;
-		::solve::compute_and_apply_diff(&local_api, &web_api, config.mods())?;
+			let config = ::config::Config::load(&local_api)?;
+			::solve::compute_and_apply_diff(&local_api, &web_api, config.mods())?;
 
-		Ok(())
+			Ok(())
+		})
+		.into_future())
 	}
 }

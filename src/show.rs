@@ -1,3 +1,5 @@
+use ::futures::Future;
+
 pub struct SubCommand;
 
 impl ::util::SubCommand for SubCommand {
@@ -7,55 +9,69 @@ impl ::util::SubCommand for SubCommand {
 			(@arg mods: ... +required index(1) "mods to show"))
 	}
 
-	fn run<'a>(&self, matches: &::clap::ArgMatches<'a>, _: ::Result<::factorio_mods_local::API>, web_api: ::Result<::factorio_mods_web::API>) -> ::Result<()> {
-		use ::ResultExt;
+	fn run<'a, 'b, 'c>(
+		&'a self,
+		matches: &'a ::clap::ArgMatches<'b>,
+		_: ::Result<&'c ::factorio_mods_local::API>,
+		web_api: ::Result<&'c ::factorio_mods_web::API>,
+	) -> Box<::futures::Future<Item = (), Error = ::Error> + 'c> where 'a: 'b, 'b: 'c {
+		Box::new(match web_api {
+			Ok(web_api) => {
+				let names = matches.values_of("mods").unwrap();
+				let names = names.into_iter().map(|name| ::factorio_mods_common::ModName::new(name.to_string()));
 
-		let web_api = web_api?;
+				::futures::future::Either::A(
+					::futures::future::join_all( // TODO: Should be changed to `::futures::stream::futures_ordered()` when that's released
+						names.map(move |name| web_api.get(&name))) // .map_err(|err| err.chain_err(|| format!("Could not retrieve mod {}", &name)))
+					.map_err(|err| {
+						use ::ErrorExt;
+						err.chain_err(|| "Could not retrieve mod")
+					})
+					.map(|mods| {
+						for mod_ in mods {
+							println!("Name: {}", mod_.name());
+							println!("Author: {}", ::itertools::join(mod_.owner(), ", "));
+							println!("Title: {}", mod_.title());
+							println!("Summary: {}", mod_.summary());
+							println!("Description:");
+							for line in mod_.description().lines() {
+								println!("    {}", line);
+							}
 
-		let names = matches.values_of("mods").unwrap();
+							println!("Tags: {}", ::itertools::join(mod_.tags().iter().map(|t| t.name()), ", "));
 
-		for name in names {
-			let mod_ = web_api.get(&::factorio_mods_common::ModName::new(name.to_string())).chain_err(|| format!("Could not retrieve mod {}", name))?;
+							let homepage = mod_.homepage();
+							if !homepage.is_empty() {
+								println!("Homepage: {}", homepage);
+							}
 
-			println!("Name: {}", mod_.name());
-			println!("Author: {}", ::itertools::join(mod_.owner(), ", "));
-			println!("Title: {}", mod_.title());
-			println!("Summary: {}", mod_.summary());
-			println!("Description:");
-			for line in mod_.description().lines() {
-				println!("    {}", line);
-			}
+							let github_path = mod_.github_path();
+							if !github_path.is_empty() {
+								println!("GitHub page: https://github.com/{}", github_path);
+							}
 
-			println!("Tags: {}", ::itertools::join(mod_.tags().iter().map(|t| t.name()), ", "));
+							println!("License: {}", mod_.license_name());
 
-			let homepage = mod_.homepage();
-			if !homepage.is_empty() {
-				println!("Homepage: {}", homepage);
-			}
+							println!("Game versions: {}", ::itertools::join(mod_.game_versions(), ", "));
 
-			let github_path = mod_.github_path();
-			if !github_path.is_empty() {
-				println!("GitHub page: https://github.com/{}", github_path);
-			}
+							println!("Releases:");
+							let releases = mod_.releases();
+							if releases.is_empty() {
+								println!("    No releases");
+							}
+							else {
+								for release in releases {
+									println!("    Version: {:-9} Game version: {:-9}", release.version(), release.factorio_version());
+								}
+							}
 
-			println!("License: {}", mod_.license_name());
+							println!("");
+						}
+					}))
+			},
 
-			println!("Game versions: {}", ::itertools::join(mod_.game_versions(), ", "));
-
-			println!("Releases:");
-			let releases = mod_.releases();
-			if releases.is_empty() {
-				println!("    No releases");
-			}
-			else {
-				for release in releases {
-					println!("    Version: {:-9} Game version: {:-9}", release.version(), release.factorio_version());
-				}
-			}
-
-			println!("");
-		}
-
-		Ok(())
+			Err(err) =>
+				::futures::future::Either::B(::futures::future::err(err))
+		})
 	}
 }
